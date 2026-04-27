@@ -300,7 +300,7 @@ def create_page():
                             "font-size: 15px; font-weight: bold; color: #e6edf3;"
                         )
                     ui.label(
-                        "Same image at all 5 CWT scales: σ=2, σ=4, σ=8, σ=16, σ=32"
+                        "Same image at all 5 CWT scales: scale=2, scale=4, scale=8, scale=16, scale=32"
                     ).style("font-size: 11px; color: #8b949e; padding-left: 26px;")
 
             current_name_label = ui.label("").style(
@@ -319,7 +319,7 @@ def create_page():
                         )
                         with container:
                             ui.html(
-                                f'<span class="badge badge-purple">σ={scale}</span>'
+                                f'<span class="badge badge-purple">scale={scale}</span>'
                             )
                             placeholder = ui.label("🖼").classes("placeholder-text")
                             img = ui.image("").style(
@@ -364,10 +364,10 @@ def create_page():
                         )
                         with container:
                             ui.html(
-                                f'<span class="badge badge-green">σ={scale}</span>'
+                                f'<span class="badge badge-green">scale={scale}</span>'
                             )
                             icon = ui.label("🖼").classes("placeholder-text")
-                            ui.label(f"YOLO @ σ={scale}").style(
+                            ui.label(f"YOLO @ scale={scale}").style(
                                 "font-size: 10px; color: #8b949e;"
                             )
                         det = ui.label("— detections").classes("status-dot-pending")
