@@ -8,7 +8,7 @@ from pathlib import Path
 # Constants & Paths
 # ──────────────────────────────────────────────────────────────
 SCALES = [2, 4, 8, 16, 32]
-BASE_DIR = Path("/media/mueenlab/extradrive1/ahmaide/cwt_results_png")
+BASE_DIR = Path("/media/mueenlab/extradrive1/ahmaide/CWT_results_May2026/png")
 YOLO_DIR = Path("/media/mueenlab/extradrive1/ahmaide/CWT_YOLO_May2026")
 SCALE_DIRS = {s: BASE_DIR / f"sigma_{s}" for s in SCALES}
 YOLO_DIRS = {s: YOLO_DIR / f"sigma_{s}" for s in SCALES}
@@ -18,35 +18,43 @@ IMAGE_LIST = []
 
 
 def discover_images(verbose=True):
+    """
+    Scan sigma_32 directory and build image list.
+    Looks for ALL PNG files in the directory (no subdirectories).
+    """
     global TOTAL_IMAGES, IMAGE_LIST
 
-    IMAGE_LIST = []
+    IMAGE_LIST = []  # Reset
     
     sigma32_dir = SCALE_DIRS[32]
     if not sigma32_dir.exists():
         print(f"ERROR: Directory not found: {sigma32_dir}")
         return
 
+    # Get ALL png files in directory
     all_files = list(sigma32_dir.glob("*.png"))
     
     if verbose:
-        print(f"\n🔍 Scanning: {sigma32_dir}")
+        print(f"\nScanning: {sigma32_dir}")
         print(f"   Found {len(all_files)} total PNG files")
 
     files = sorted([f.name for f in all_files])
 
+    # Extract unique base names (everything before _sigma32.png)
     base_names = set()
     for fname in files:
         if "_sigma32.png" in fname:
             base = fname.replace("_sigma32.png", "")
             base_names.add(base)
         else:
+            # If file doesn't follow naming convention, skip it
             if verbose:
-                print(f"   ⚠ Skipping non-standard file: {fname}")
+                print(f"   Skipping non-standard file: {fname}")
 
     if verbose:
         print(f"   Extracted {len(base_names)} unique images")
 
+    # Build image list
     for base in sorted(base_names):
         IMAGE_LIST.append({
             "base_name": base,
@@ -55,11 +63,13 @@ def discover_images(verbose=True):
             "yolo_paths": {}
         })
 
+        # Build paths for all scales
         for s in SCALES:
             scale_fname = f"{base}_sigma{s}.png"
             scale_path = SCALE_DIRS[s] / scale_fname
             IMAGE_LIST[-1]["paths"][s] = scale_path
 
+            # YOLO files
             yolo_y_path = YOLO_DIRS[s] / f"{base}_sigma{s}_Y.png"
             yolo_n_path = YOLO_DIRS[s] / f"{base}_sigma{s}_N.png"
 
@@ -70,23 +80,27 @@ def discover_images(verbose=True):
             else:
                 IMAGE_LIST[-1]["yolo_paths"][s] = (None, False)
 
+    # REVERSE: Process from last to first
+    IMAGE_LIST = IMAGE_LIST[328::]
+
     TOTAL_IMAGES = len(IMAGE_LIST)
 
     if verbose:
-        print(f"\n✓ Discovered {TOTAL_IMAGES} images")
+        print(f"\nDiscovered {TOTAL_IMAGES} images (reversed: last to first)")
         if TOTAL_IMAGES > 0:
             first = IMAGE_LIST[0]
-            print(f"  First: {first['base_name']}")
+            print(f"  First to process: {first['base_name']}")
             last = IMAGE_LIST[-1]
-            print(f"  Last:  {last['base_name']}")
+            print(f"  Last to process:  {last['base_name']}")
             
+            # Check file integrity
             missing_count = 0
             for img in IMAGE_LIST:
                 for s in SCALES:
                     if not img["paths"][s].exists():
                         missing_count += 1
             if missing_count > 0:
-                print(f"  ⚠ Warning: {missing_count} scale files missing across all images")
+                print(f"  Warning: {missing_count} scale files missing across all images")
 
 
 discover_images(verbose=True)
@@ -240,6 +254,7 @@ CUSTOM_CSS = """
 
 
 def get_carousel_indices(current, total):
+    """Get 3 indices centered on current for the carousel."""
     if total == 0:
         return [0, 0, 0]
     indices = []
@@ -256,6 +271,7 @@ def get_carousel_indices(current, total):
 def create_page():
     ui.html(CUSTOM_CSS)
 
+    # Serve image directories
     for s in SCALES:
         app.add_static_files(f"/images/sigma_{s}", str(SCALE_DIRS[s]))
         app.add_static_files(f"/yolo/sigma_{s}", str(YOLO_DIRS[s]))
@@ -265,7 +281,7 @@ def create_page():
     # ══════════════════════════════════════════════════════════
     detection_banner = ui.element("div").classes("detection-banner")
     with detection_banner:
-        ui.html('<div class="detection-banner-text">🚨 DETECTION FOUND 🚨</div>')
+        ui.html('<div class="detection-banner-text">DETECTION FOUND</div>')
 
     page_overlay = ui.element("div").classes("page-overlay")
 
@@ -274,7 +290,7 @@ def create_page():
     # ══════════════════════════════════════════════════════════
     with ui.row().classes("top-bar w-full items-center justify-between"):
         with ui.row().classes("items-center gap-3"):
-            ui.label("CWT × YOLO").style(
+            ui.label("CWT x YOLO").style(
                 "font-size: 22px; font-weight: bold; color: #e6edf3;"
             )
             ui.label("Multi-Scale Analysis Pipeline").style(
@@ -283,7 +299,7 @@ def create_page():
 
         with ui.row().classes("items-center gap-3"):
             with ui.row().classes("timer-box items-center gap-2"):
-                ui.label("⏱").style("font-size: 14px;")
+                ui.label("Time:").style("font-size: 12px;")
                 timer_label = ui.label("00:00:00").style(
                     "font-size: 18px; font-weight: bold; color: #58a6ff;"
                 )
@@ -296,17 +312,17 @@ def create_page():
                     "font-size: 14px; font-weight: bold; color: #e6edf3;"
                 )
 
-            start_btn = ui.button("▶  Start", on_click=lambda: toggle_run()).style(
+            start_btn = ui.button("Start", on_click=lambda: toggle_run()).style(
                 "background-color: #3fb950; color: #0d1117; font-weight: bold; "
                 "border-radius: 8px; padding: 8px 20px; font-size: 13px;"
             )
 
-            ui.button("🔄 Rescan", on_click=lambda: rescan_files()).style(
+            ui.button("Rescan", on_click=lambda: rescan_files()).style(
                 "background-color: #58a6ff; color: #0d1117; font-weight: bold; "
                 "border-radius: 8px; padding: 8px 16px; font-size: 13px;"
             )
 
-            ui.button("↺  Reset", on_click=lambda: reset()).style(
+            ui.button("Reset", on_click=lambda: reset()).style(
                 "background-color: #1c2333; color: #8b949e; font-weight: bold; "
                 "border: 1px solid #30363d; border-radius: 8px; "
                 "padding: 8px 16px; font-size: 13px;"
@@ -320,19 +336,18 @@ def create_page():
     ):
 
         # ──────────────────────────────────────────────────────
-        # SECTION 1: CAROUSEL
+        # SECTION 1: CAROUSEL (3 images, larger)
         # ──────────────────────────────────────────────────────
         with ui.column().classes("section-card w-full"):
             with ui.row().classes("items-center gap-3"):
                 ui.html('<div class="section-bar" style="background:#58a6ff;"></div>')
                 with ui.column().style("gap: 2px;"):
                     with ui.row().classes("items-center gap-2"):
-                        ui.label("📂").style("font-size: 16px;")
                         ui.label("Image Carousel").style(
                             "font-size: 15px; font-weight: bold; color: #e6edf3;"
                         )
                     ui.label(
-                        "Sigma-32 source images — center image is selected for multi-scale analysis"
+                        "Scale-32 source images - center image is selected for multi-scale analysis"
                     ).style("font-size: 11px; color: #8b949e; padding-left: 26px;")
 
             with ui.row().classes("w-full justify-center items-end gap-8").style(
@@ -353,7 +368,9 @@ def create_page():
                                     "image-frame image-frame-center"
                                 ).style(f"width: {w}px; height: {h}px;")
                                 with container:
-                                    placeholder = ui.label("🖼").classes("placeholder-text")
+                                    placeholder = ui.label("IMAGE").classes("placeholder-text").style(
+                                        "font-size: 12px;"
+                                    )
                                     img = ui.image("").style(
                                         "max-width:100%; max-height:100%; "
                                         "object-fit:contain; display:none;"
@@ -361,7 +378,7 @@ def create_page():
                             name_lbl = ui.label("waiting...").classes("filename-label").style(
                                 "max-width: 280px;"
                             )
-                            ui.label("▲ SELECTED").style(
+                            ui.label("SELECTED").style(
                                 "font-size: 9px; font-weight: bold; color: #58a6ff; "
                                 "font-family: Consolas, monospace;"
                             )
@@ -370,7 +387,9 @@ def create_page():
                                 f"width: {w}px; height: {h}px; opacity: 0.6;"
                             )
                             with container:
-                                placeholder = ui.label("🖼").classes("placeholder-text")
+                                placeholder = ui.label("IMAGE").classes("placeholder-text").style(
+                                    "font-size: 12px;"
+                                )
                                 img = ui.image("").style(
                                     "max-width:100%; max-height:100%; "
                                     "object-fit:contain; display:none;"
@@ -384,22 +403,21 @@ def create_page():
                             "name_lbl": name_lbl,
                         })
 
-        ui.label("▼").classes("arrow-down").style("padding: 2px 0;")
+        ui.label("").classes("arrow-down").style("padding: 2px 0; color: transparent;")
 
         # ──────────────────────────────────────────────────────
-        # SECTION 2: CWT SCALES (LARGER)
+        # SECTION 2: CWT SCALES
         # ──────────────────────────────────────────────────────
         with ui.column().classes("section-card w-full"):
             with ui.row().classes("items-center gap-3"):
                 ui.html('<div class="section-bar" style="background:#bc8cff;"></div>')
                 with ui.column().style("gap: 2px;"):
                     with ui.row().classes("items-center gap-2"):
-                        ui.label("🔬").style("font-size: 16px;")
                         ui.label("CWT Multi-Scale Decomposition").style(
                             "font-size: 15px; font-weight: bold; color: #e6edf3;"
                         )
                     ui.label(
-                        "Same image at all 5 CWT scales: σ=2, σ=4, σ=8, σ=16, σ=32"
+                        "Same image at all 5 scales: 2, 4, 8, 16, 32"
                     ).style("font-size: 11px; color: #8b949e; padding-left: 26px;")
 
             current_name_label = ui.label("").style(
@@ -418,14 +436,16 @@ def create_page():
                         )
                         with container:
                             ui.html(
-                                f'<span class="badge badge-purple">σ={scale}</span>'
+                                f'<span class="badge badge-purple">scale {scale}</span>'
                             )
-                            placeholder = ui.label("🖼").classes("placeholder-text")
+                            placeholder = ui.label("IMAGE").classes("placeholder-text").style(
+                                "font-size: 12px;"
+                            )
                             img = ui.image("").style(
                                 "max-width:100%; max-height:100%; "
                                 "object-fit:contain; padding:4px; display:none;"
                             )
-                        dot = ui.label("○ pending").classes("status-dot-pending")
+                        dot = ui.label("pending").classes("status-dot-pending")
                         scale_items.append({
                             "container": container,
                             "img": img,
@@ -434,22 +454,21 @@ def create_page():
                             "scale": scale,
                         })
 
-        ui.label("▼").classes("arrow-down").style("padding: 2px 0;")
+        ui.label("").classes("arrow-down").style("padding: 2px 0; color: transparent;")
 
         # ──────────────────────────────────────────────────────
-        # SECTION 3: YOLO RESULTS (LARGER)
+        # SECTION 3: YOLO RESULTS
         # ──────────────────────────────────────────────────────
         with ui.column().classes("section-card w-full"):
             with ui.row().classes("items-center gap-3"):
                 ui.html('<div class="section-bar" style="background:#3fb950;"></div>')
                 with ui.column().style("gap: 2px;"):
                     with ui.row().classes("items-center gap-2"):
-                        ui.label("🎯").style("font-size: 16px;")
                         ui.label("YOLO Detection Results").style(
                             "font-size: 15px; font-weight: bold; color: #e6edf3;"
                         )
                     ui.label(
-                        "Object detection applied to each CWT-scaled image — Red = Detected"
+                        "Object detection applied to each scale - Green = clear, Red = Detected"
                     ).style("font-size: 11px; color: #8b949e; padding-left: 26px;")
 
             with ui.row().classes("w-full justify-center items-start gap-4").style(
@@ -463,14 +482,16 @@ def create_page():
                         )
                         with container:
                             ui.html(
-                                f'<span class="badge badge-green">σ={scale}</span>'
+                                f'<span class="badge badge-green">scale {scale}</span>'
                             )
-                            placeholder = ui.label("🖼").classes("placeholder-text")
+                            placeholder = ui.label("IMAGE").classes("placeholder-text").style(
+                                "font-size: 12px;"
+                            )
                             img = ui.image("").style(
                                 "max-width:100%; max-height:100%; "
                                 "object-fit:contain; padding:4px; display:none;"
                             )
-                        det = ui.label("— detections").classes("status-dot-pending")
+                        det = ui.label("no data").classes("status-dot-pending")
                         result_items.append({
                             "container": container,
                             "img": img,
@@ -486,7 +507,7 @@ def create_page():
     ).props("color=#58a6ff track-color=#161b22")
 
     with ui.row().classes("status-bar w-full items-center justify-between"):
-        status_label = ui.label("● Ready — press Start to begin").style("color: #3fb950;")
+        status_label = ui.label("Ready - press Start to begin").style("color: #3fb950;")
         progress_text = ui.label(f"0 / {TOTAL_IMAGES} images processed").style(
             "color: #8b949e;"
         )
@@ -520,7 +541,7 @@ def create_page():
                 show_image(item, f"/images/sigma_32/{fname}")
                 display_name = img_data["base_name"]
                 if len(display_name) > 28:
-                    display_name = display_name[:28] + "…"
+                    display_name = display_name[:28] + "..."
                 item["name_lbl"].text = display_name
             else:
                 hide_image(item)
@@ -530,7 +551,7 @@ def create_page():
         if image_index < 0 or image_index >= TOTAL_IMAGES:
             return
         img_data = IMAGE_LIST[image_index]
-        current_name_label.text = f"📎 {img_data['base_name']}"
+        current_name_label.text = f"{img_data['base_name']}"
 
         for item in scale_items:
             s = item["scale"]
@@ -539,11 +560,11 @@ def create_page():
 
             if img_data["paths"][s].exists():
                 show_image(item, src)
-                item["dot"].text = "✓ loaded"
+                item["dot"].text = "loaded"
                 item["dot"]._classes = ["status-dot-done"]
             else:
                 hide_image(item)
-                item["dot"].text = "✗ missing"
+                item["dot"].text = "missing"
                 item["dot"]._classes = ["status-dot-pending"]
             item["dot"].update()
 
@@ -567,15 +588,15 @@ def create_page():
                 show_image(item, src)
                 
                 if is_detected:
-                    item["det"].text = "🔴 DETECTED"
+                    item["det"].text = "DETECTED"
                     item["det"]._classes = ["status-dot-detected"]
                     earthquake_detected = True
                 else:
-                    item["det"].text = "🟢 clear"
+                    item["det"].text = "clear"
                     item["det"]._classes = ["status-dot-done"]
             else:
                 hide_image(item)
-                item["det"].text = "— no data"
+                item["det"].text = "no data"
                 item["det"]._classes = ["status-dot-pending"]
             
             item["det"].update()
@@ -590,13 +611,13 @@ def create_page():
 
         for item in scale_items:
             hide_image(item)
-            item["dot"].text = "○ pending"
+            item["dot"].text = "pending"
             item["dot"]._classes = ["status-dot-pending"]
             item["dot"].update()
 
         for item in result_items:
             hide_image(item)
-            item["det"].text = "— detections"
+            item["det"].text = "no data"
             item["det"]._classes = ["status-dot-pending"]
             item["det"].update()
 
@@ -623,7 +644,7 @@ def create_page():
         counter_label.text = f"0000 / {TOTAL_IMAGES}"
         progress_text.text = f"0 / {TOTAL_IMAGES} images processed"
         clear_all()
-        ui.notify(f"✓ Rescanned: {TOTAL_IMAGES} images found")
+        ui.notify(f"Rescanned: {TOTAL_IMAGES} images found")
 
     # ══════════════════════════════════════════════════════════
     # CONTROL LOGIC
@@ -635,8 +656,8 @@ def create_page():
                 "background-color: #d29922; color: #0d1117; font-weight: bold; "
                 "border-radius: 8px; padding: 8px 20px; font-size: 13px;"
             )
-            start_btn.text = "⏸  Pause"
-            status_label.text = "● Processing..."
+            start_btn.text = "Pause"
+            status_label.text = "Processing..."
             status_label.style("color: #d29922;")
             asyncio.create_task(run_pipeline())
         else:
@@ -645,8 +666,8 @@ def create_page():
                 "background-color: #3fb950; color: #0d1117; font-weight: bold; "
                 "border-radius: 8px; padding: 8px 20px; font-size: 13px;"
             )
-            start_btn.text = "▶  Resume"
-            status_label.text = "● Paused"
+            start_btn.text = "Resume"
+            status_label.text = "Paused"
             status_label.style("color: #d29922;")
 
     def reset():
@@ -657,12 +678,12 @@ def create_page():
         timer_label.text = "00:00:00"
         counter_label.text = f"0000 / {TOTAL_IMAGES}"
         progress.value = 0
-        start_btn.text = "▶  Start"
+        start_btn.text = "Start"
         start_btn.style(
             "background-color: #3fb950; color: #0d1117; font-weight: bold; "
             "border-radius: 8px; padding: 8px 20px; font-size: 13px;"
         )
-        status_label.text = "● Ready — press Start to begin"
+        status_label.text = "Ready - press Start to begin"
         status_label.style("color: #3fb950;")
         progress_text.text = f"0 / {TOTAL_IMAGES} images processed"
 
@@ -685,14 +706,14 @@ def create_page():
                 break
 
             img_data = IMAGE_LIST[idx]
-            current_name_label.text = f"📎 {img_data['base_name']}"
+            current_name_label.text = f"{img_data['base_name']}"
 
             for i, item in enumerate(scale_items):
                 if not state["running"]:
                     break
 
                 s = item["scale"]
-                item["dot"].text = "● loading..."
+                item["dot"].text = "loading..."
                 item["dot"]._classes = ["status-dot-processing"]
                 item["dot"].update()
 
@@ -703,11 +724,11 @@ def create_page():
 
                 if img_data["paths"][s].exists():
                     show_image(item, src)
-                    item["dot"].text = "✓ loaded"
+                    item["dot"].text = "loaded"
                     item["dot"]._classes = ["status-dot-done"]
                 else:
                     hide_image(item)
-                    item["dot"].text = "✗ missing"
+                    item["dot"].text = "missing"
                     item["dot"]._classes = ["status-dot-pending"]
                 item["dot"].update()
 
@@ -718,7 +739,6 @@ def create_page():
 
             earthquake_detected = update_yolo(idx)
 
-            # Show detection banner and overlay if detected
             if earthquake_detected:
                 show_detection()
                 await asyncio.sleep(3.5)
@@ -731,13 +751,13 @@ def create_page():
 
             for item in result_items:
                 hide_image(item)
-                item["det"].text = "— detections"
+                item["det"].text = "no data"
                 item["det"]._classes = ["status-dot-pending"]
                 item["det"].update()
 
             for item in scale_items:
                 hide_image(item)
-                item["dot"].text = "○ pending"
+                item["dot"].text = "pending"
                 item["dot"]._classes = ["status-dot-pending"]
                 item["dot"].update()
 
@@ -746,12 +766,12 @@ def create_page():
         state["running"] = False
 
         if state["current_index"] >= TOTAL_IMAGES:
-            start_btn.text = "✓  Done"
+            start_btn.text = "Done"
             start_btn.style(
                 "background-color: #3fb950; color: #0d1117; font-weight: bold; "
                 "border-radius: 8px; padding: 8px 20px; font-size: 13px;"
             )
-            status_label.text = "● Complete!"
+            status_label.text = "Complete!"
             status_label.style("color: #3fb950;")
 
     async def run_timer():
@@ -768,7 +788,7 @@ def create_page():
 create_page()
 
 ui.run(
-    title="CWT × YOLO — Multi-Scale Analysis",
+    title="CWT x YOLO - Multi-Scale Analysis",
     port=8080,
     reload=False,
     dark=True,
