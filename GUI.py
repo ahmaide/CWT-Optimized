@@ -9,7 +9,9 @@ from pathlib import Path
 # ──────────────────────────────────────────────────────────────
 SCALES = [2, 4, 8, 16, 32]
 BASE_DIR = Path("/media/mueenlab/extradrive1/ahmaide/cwt_results_png")
+YOLO_DIR = Path("/media/mueenlab/extradrive1/ahmaide/CWT_YOLO_May2026")
 SCALE_DIRS = {s: BASE_DIR / f"sigma_{s}" for s in SCALES}
+YOLO_DIRS = {s: YOLO_DIR / f"sigma_{s}" for s in SCALES}
 
 TOTAL_IMAGES = 0
 IMAGE_LIST = []
@@ -33,12 +35,24 @@ def discover_images():
         IMAGE_LIST.append({
             "base_name": base,
             "filename_32": fname,
-            "paths": {}
+            "paths": {},
+            "yolo_paths": {}
         })
         for s in SCALES:
             scale_fname = f"{base}_sigma{s}.png"
             scale_path = SCALE_DIRS[s] / scale_fname
             IMAGE_LIST[-1]["paths"][s] = scale_path
+            
+            # YOLO files: base_sigma{s}_Y.png or base_sigma{s}_N.png
+            yolo_y_path = YOLO_DIRS[s] / f"{base}_sigma{s}_Y.png"
+            yolo_n_path = YOLO_DIRS[s] / f"{base}_sigma{s}_N.png"
+            
+            if yolo_y_path.exists():
+                IMAGE_LIST[-1]["yolo_paths"][s] = (yolo_y_path, True)  # True = Detected
+            elif yolo_n_path.exists():
+                IMAGE_LIST[-1]["yolo_paths"][s] = (yolo_n_path, False)  # False = Not detected
+            else:
+                IMAGE_LIST[-1]["yolo_paths"][s] = (None, False)
 
     TOTAL_IMAGES = len(IMAGE_LIST)
     print(f"Discovered {TOTAL_IMAGES} images")
@@ -115,6 +129,7 @@ CUSTOM_CSS = """
     }
     .badge-purple { background: #bc8cff; }
     .badge-green  { background: #3fb950; }
+    .badge-red    { background: #f85149; }
     .timer-box, .counter-box {
         background: #1c2333;
         border: 1px solid #30363d;
@@ -131,6 +146,7 @@ CUSTOM_CSS = """
     .status-dot-pending    { color: #484f58; font-family: 'Consolas', monospace; font-size: 12px; }
     .status-dot-processing { color: #d29922; font-family: 'Consolas', monospace; font-size: 12px; }
     .status-dot-done       { color: #3fb950; font-family: 'Consolas', monospace; font-size: 12px; }
+    .status-dot-detected   { color: #f85149; font-family: 'Consolas', monospace; font-size: 12px; font-weight: bold; }
     .status-bar {
         background: #161b22;
         border-top: 1px solid #30363d;
@@ -148,15 +164,41 @@ CUSTOM_CSS = """
     .placeholder-text {
         font-size: 26px; color: #484f58;
     }
+    .earthquake-alert {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(248, 81, 73, 0.95);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        animation: pulse 0.5s ease-in-out;
+    }
+    .earthquake-text {
+        font-size: 72px;
+        font-weight: bold;
+        color: white;
+        text-shadow: 0 0 40px rgba(0,0,0,0.5);
+        font-family: 'Segoe UI', sans-serif;
+    }
+    @keyframes pulse {
+        0% { opacity: 0; }
+        50% { opacity: 1; }
+        100% { opacity: 1; }
+    }
 </style>
 """
 
 
 def get_carousel_indices(current, total):
+    """Get 3 indices centered on current for the carousel."""
     if total == 0:
-        return [0, 0, 0, 0, 0]
+        return [0, 0, 0]
     indices = []
-    for offset in [-2, -1, 0, 1, 2]:
+    for offset in [-1, 0, 1]:
         idx = current + offset
         if idx < 0:
             idx = 0
@@ -172,6 +214,16 @@ def create_page():
     # Serve image directories
     for s in SCALES:
         app.add_static_files(f"/images/sigma_{s}", str(SCALE_DIRS[s]))
+        app.add_static_files(f"/yolo/sigma_{s}", str(YOLO_DIRS[s]))
+
+    # ══════════════════════════════════════════════════════════
+    # EARTHQUAKE ALERT (hidden by default)
+    # ══════════════════════════════════════════════════════════
+    earthquake_alert = ui.element("div").classes("earthquake-alert").style(
+        "display: none;"
+    )
+    with earthquake_alert:
+        ui.html('<div class="earthquake-text">🌍 EARTHQUAKE DETECTED 🌍</div>')
 
     # ══════════════════════════════════════════════════════════
     # TOP BAR
@@ -219,7 +271,7 @@ def create_page():
     ):
 
         # ──────────────────────────────────────────────────────
-        # SECTION 1: CAROUSEL
+        # SECTION 1: CAROUSEL (3 images, larger)
         # ──────────────────────────────────────────────────────
         with ui.column().classes("section-card w-full"):
             with ui.row().classes("items-center gap-3"):
@@ -234,19 +286,17 @@ def create_page():
                         "Sigma-32 source images — center image is selected for multi-scale analysis"
                     ).style("font-size: 11px; color: #8b949e; padding-left: 26px;")
 
-            with ui.row().classes("w-full justify-center items-end gap-5").style(
+            with ui.row().classes("w-full justify-center items-end gap-8").style(
                 "padding-top: 16px; padding-bottom: 8px;"
             ):
                 carousel_items = []
                 sizes = [
-                    (100, 80, False, 0.4),
-                    (130, 100, False, 0.7),
-                    (180, 140, True, 1.0),
-                    (130, 100, False, 0.7),
-                    (100, 80, False, 0.4),
+                    (200, 160, False),
+                    (280, 220, True),   # center - larger
+                    (200, 160, False),
                 ]
 
-                for i, (w, h, is_center, opacity) in enumerate(sizes):
+                for i, (w, h, is_center) in enumerate(sizes):
                     with ui.column().classes("items-center gap-1"):
                         if is_center:
                             with ui.element("div").classes("glow-wrapper"):
@@ -260,7 +310,7 @@ def create_page():
                                         "object-fit:contain; display:none;"
                                     )
                             name_lbl = ui.label("waiting...").classes("filename-label").style(
-                                "max-width: 180px;"
+                                "max-width: 280px;"
                             )
                             ui.label("▲ SELECTED").style(
                                 "font-size: 9px; font-weight: bold; color: #58a6ff; "
@@ -268,7 +318,7 @@ def create_page():
                             )
                         else:
                             container = ui.element("div").classes("image-frame").style(
-                                f"width: {w}px; height: {h}px; opacity: {opacity};"
+                                f"width: {w}px; height: {h}px; opacity: 0.6;"
                             )
                             with container:
                                 placeholder = ui.label("🖼").classes("placeholder-text")
@@ -288,7 +338,7 @@ def create_page():
         ui.label("▼").classes("arrow-down").style("padding: 2px 0;")
 
         # ──────────────────────────────────────────────────────
-        # SECTION 2: CWT SCALES
+        # SECTION 2: CWT SCALES (larger)
         # ──────────────────────────────────────────────────────
         with ui.column().classes("section-card w-full"):
             with ui.row().classes("items-center gap-3"):
@@ -300,7 +350,7 @@ def create_page():
                             "font-size: 15px; font-weight: bold; color: #e6edf3;"
                         )
                     ui.label(
-                        "Same image at all 5 CWT scales: scale=2, scale=4, scale=8, scale=16, scale=32"
+                        "Same image at all 5 CWT scales: σ=2, σ=4, σ=8, σ=16, σ=32"
                     ).style("font-size: 11px; color: #8b949e; padding-left: 26px;")
 
             current_name_label = ui.label("").style(
@@ -315,11 +365,11 @@ def create_page():
                 for scale in SCALES:
                     with ui.column().classes("items-center gap-1"):
                         container = ui.element("div").classes("image-frame").style(
-                            "width: 170px; height: 135px; position: relative;"
+                            "width: 200px; height: 160px; position: relative;"
                         )
                         with container:
                             ui.html(
-                                f'<span class="badge badge-purple">scale={scale}</span>'
+                                f'<span class="badge badge-purple">σ={scale}</span>'
                             )
                             placeholder = ui.label("🖼").classes("placeholder-text")
                             img = ui.image("").style(
@@ -338,7 +388,7 @@ def create_page():
         ui.label("▼").classes("arrow-down").style("padding: 2px 0;")
 
         # ──────────────────────────────────────────────────────
-        # SECTION 3: YOLO RESULTS
+        # SECTION 3: YOLO RESULTS (larger, with detection indicator)
         # ──────────────────────────────────────────────────────
         with ui.column().classes("section-card w-full"):
             with ui.row().classes("items-center gap-3"):
@@ -350,7 +400,7 @@ def create_page():
                             "font-size: 15px; font-weight: bold; color: #e6edf3;"
                         )
                     ui.label(
-                        "Object detection applied to each CWT-scaled image"
+                        "Object detection applied to each CWT-scaled image — Red = Detected"
                     ).style("font-size: 11px; color: #8b949e; padding-left: 26px;")
 
             with ui.row().classes("w-full justify-center items-start gap-5").style(
@@ -360,20 +410,22 @@ def create_page():
                 for scale in SCALES:
                     with ui.column().classes("items-center gap-1"):
                         container = ui.element("div").classes("image-frame").style(
-                            "width: 170px; height: 135px; position: relative;"
+                            "width: 200px; height: 160px; position: relative;"
                         )
                         with container:
                             ui.html(
-                                f'<span class="badge badge-green">scale={scale}</span>'
+                                f'<span class="badge badge-green">σ={scale}</span>'
                             )
-                            icon = ui.label("🖼").classes("placeholder-text")
-                            ui.label(f"YOLO @ scale={scale}").style(
-                                "font-size: 10px; color: #8b949e;"
+                            placeholder = ui.label("🖼").classes("placeholder-text")
+                            img = ui.image("").style(
+                                "max-width:100%; max-height:100%; "
+                                "object-fit:contain; padding:4px; display:none;"
                             )
                         det = ui.label("— detections").classes("status-dot-pending")
                         result_items.append({
                             "container": container,
-                            "icon": icon,
+                            "img": img,
+                            "placeholder": placeholder,
                             "det": det,
                         })
 
@@ -394,7 +446,6 @@ def create_page():
     # HELPERS
     # ══════════════════════════════════════════════════════════
     def show_image(item, src):
-        """Hide placeholder, show real image."""
         item["placeholder"].style("display: none;")
         item["img"].set_source(src)
         item["img"].style(
@@ -403,7 +454,6 @@ def create_page():
         )
 
     def hide_image(item):
-        """Show placeholder, hide real image."""
         item["placeholder"].style("display: block;")
         item["img"].set_source("")
         item["img"].style(
@@ -448,6 +498,41 @@ def create_page():
                 item["dot"]._classes = ["status-dot-pending"]
             item["dot"].update()
 
+    def update_yolo(image_index):
+        """Load YOLO results and check for detections."""
+        if image_index < 0 or image_index >= TOTAL_IMAGES:
+            return
+        
+        img_data = IMAGE_LIST[image_index]
+        earthquake_detected = False
+
+        for i, item in enumerate(result_items):
+            s = SCALES[i]
+            yolo_data = img_data["yolo_paths"].get(s)
+            
+            if yolo_data and yolo_data[0]:
+                yolo_path, is_detected = yolo_data
+                fname = yolo_path.name
+                src = f"/yolo/sigma_{s}/{fname}"
+                
+                show_image(item, src)
+                
+                if is_detected:
+                    item["det"].text = "🔴 DETECTED"
+                    item["det"]._classes = ["status-dot-detected"]
+                    earthquake_detected = True
+                else:
+                    item["det"].text = "🟢 clear"
+                    item["det"]._classes = ["status-dot-done"]
+            else:
+                hide_image(item)
+                item["det"].text = "— no data"
+                item["det"]._classes = ["status-dot-pending"]
+            
+            item["det"].update()
+
+        return earthquake_detected
+
     def clear_all():
         """Reset all frames to placeholder state."""
         for item in carousel_items:
@@ -461,12 +546,13 @@ def create_page():
             item["dot"].update()
 
         for item in result_items:
-            item["icon"].text = "🖼"
+            hide_image(item)
             item["det"].text = "— detections"
             item["det"]._classes = ["status-dot-pending"]
             item["det"].update()
 
         current_name_label.text = ""
+        earthquake_alert.style("display: none;")
 
     # ══════════════════════════════════════════════════════════
     # CONTROL LOGIC
@@ -512,7 +598,7 @@ def create_page():
         clear_all()
 
     async def run_pipeline():
-        timer_task = asyncio.create_task(run_timer())
+        asyncio.create_task(run_timer())
 
         while state["running"] and state["current_index"] < TOTAL_IMAGES:
             idx = state["current_index"]
@@ -524,12 +610,12 @@ def create_page():
 
             # ── Step 1: Load carousel ──
             update_carousel(idx)
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.8)  # Increased from 0.2
 
             if not state["running"]:
                 break
 
-            # ── Step 2: Load scales one by one ──
+            # ── Step 2: Load scales ──
             img_data = IMAGE_LIST[idx]
             current_name_label.text = f"📎 {img_data['base_name']}"
 
@@ -542,7 +628,7 @@ def create_page():
                 item["dot"]._classes = ["status-dot-processing"]
                 item["dot"].update()
 
-                await asyncio.sleep(0.15)
+                await asyncio.sleep(0.5)  # Increased from 0.15
 
                 fname = f"{img_data['base_name']}_sigma{s}.png"
                 src = f"/images/sigma_{s}/{fname}"
@@ -560,28 +646,26 @@ def create_page():
             if not state["running"]:
                 break
 
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(1.0)  # Increased from 0.2
 
-            # ── Step 3: YOLO results (placeholder) ──
-            for i, item in enumerate(result_items):
-                if not state["running"]:
-                    break
-                item["icon"].text = "⏳"
-                await asyncio.sleep(0.1)
-                item["icon"].text = "✅"
-                item["det"].text = "✓ processed"
-                item["det"]._classes = ["status-dot-done"]
-                item["det"].update()
+            # ── Step 3: Load YOLO results ──
+            earthquake_detected = update_yolo(idx)
+
+            # Show earthquake alert if detected
+            if earthquake_detected:
+                earthquake_alert.style("display: flex;")
+                await asyncio.sleep(3.5)  # Increased from 2.0
+                earthquake_alert.style("display: none;")
 
             if not state["running"]:
                 break
 
             # Hold for viewing
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(3.5)  # Increased from 0.8
 
             # ── Reset results for next image ──
             for item in result_items:
-                item["icon"].text = "🖼"
+                hide_image(item)
                 item["det"].text = "— detections"
                 item["det"]._classes = ["status-dot-pending"]
                 item["det"].update()

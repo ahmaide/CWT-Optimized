@@ -4,15 +4,10 @@ from ultralytics import YOLO
 
 
 def run_inference(model_path, source_folder, output_root, conf=None, imgsz=640, device="0"):
-    dir_detections = os.path.join(output_root, "Detections")
-    dir_no_detections = os.path.join(output_root, "NoDetections")
-
-    os.makedirs(dir_detections, exist_ok=True)
-    os.makedirs(dir_no_detections, exist_ok=True)
+    os.makedirs(output_root, exist_ok=True)
 
     print(f"Processing: {source_folder}")
-    print(f"Saving DETECTIONS to: {dir_detections}")
-    print(f"Saving NO DETECTIONS to: {dir_no_detections}")
+    print(f"Saving results to: {output_root}")
 
     model = YOLO(model_path)
 
@@ -32,13 +27,17 @@ def run_inference(model_path, source_folder, output_root, conf=None, imgsz=640, 
 
     for result in results:
         filename = os.path.basename(result.path)
-
+        # Split filename and extension
+        name, ext = os.path.splitext(filename)
+        
         if len(result.boxes) > 0:
-            save_path = os.path.join(dir_detections, filename)
+            new_filename = f"{name}_Y{ext}"
+            save_path = os.path.join(output_root, new_filename)
             result.save(filename=save_path)
             detections_count += 1
         else:
-            save_path = os.path.join(dir_no_detections, filename)
+            new_filename = f"{name}_N{ext}"
+            save_path = os.path.join(output_root, new_filename)
             result.save(filename=save_path)
             no_detections_count += 1
 
@@ -49,7 +48,7 @@ def run_inference(model_path, source_folder, output_root, conf=None, imgsz=640, 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Run YOLO inference and split images into Detections/NoDetections."
+        description="Run YOLO inference and add Y/N suffix based on detections."
     )
     parser.add_argument(
         "--model",
@@ -67,7 +66,7 @@ def parse_args():
     parser.add_argument(
         "--output",
         required=True,
-        help="Output root directory where Detections/ and NoDetections/ are created.",
+        help="Output directory where results will be saved.",
     )
     parser.add_argument(
         "--conf",
